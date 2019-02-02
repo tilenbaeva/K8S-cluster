@@ -1,2 +1,2 @@
-# K8S-cluster
-Pods, Jobs
+# Kubernetes
+K8 cert prep
