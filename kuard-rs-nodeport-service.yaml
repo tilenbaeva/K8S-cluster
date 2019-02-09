@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kuard-rs-test-nodeport-service
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    nodePort: 32080 # Listening port on Nodes
+    port: 8080 # Listening port on ClusterIP
+    targetPort: 8080 # Pod’s listening port
+    protocol: TCP
+  selector:
+    app: kuard-rs-pod
+

@@ -1,0 +1,10 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: external-service
+spec:
+  type: ExternalName
+  externalName: mylabor.com
+  ports: 
+  - port: 80
+    protocol: TCP
