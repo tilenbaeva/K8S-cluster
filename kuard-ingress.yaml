@@ -1,0 +1,22 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: kuard-ingress
+spec:
+  rules:
+  - host: kuard.example.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: kuard-service
+          servicePort: 8080
+  - host: nginx.example.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: nginx-service
+          servicePort: 8080
+
+
