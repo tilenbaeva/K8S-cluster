@@ -1,0 +1,100 @@
+- hosts: kubernetes_master
+  become: yes
+  tasks:
+    - name: Installing useful packages
+      apt:
+        name: "{{ packages }}"
+        state: latest
+        update_cache: yes
+      vars:
+        packages:
+        - vim
+        - wget
+        - elinks
+        - telnet
+        - dnsutils
+
+    - name: Initialize Kubernetes cluster
+      shell: "kubeadm init"
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Create kube config dir
+      file:
+        path: $HOME/.kube
+        state: directory
+        mode: 0755
+
+    - name: Configure kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: $HOME/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: 0640
+
+    - pause:
+        seconds: 5
+        echo: no
+
+    - name: Install Weave Net
+      shell: "kubectl apply -f https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+
+    - pause:
+        seconds: 10
+        echo: no
+
+    - name: Update kubelet config
+      lineinfile:
+        path: /var/lib/kubelet/config.yaml
+        backup: yes
+        regexp: '^readOnlyPort: 10255'
+        insertafter: '^port: 10250'
+        line: 'readOnlyPort: 10255'
+      register: kubelet
+
+    - name: Restart kubelet
+      service:
+        name: kubelet
+        state: restarted
+      when: kubelet.changed
+
+    - name: Install Heapster
+      shell: "kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/standalone/heapster-controller.yaml"
+
+    - name: Install Heapster RBAC
+      shell: "kubectl apply -f https://raw.githubusercontent.com/kubernetes/heapster/master/deploy/kube-config/rbac/heapster-rbac.yaml"
+
+    - name: Downloading Kubernetes dashbaord
+      get_url:
+        url: https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+        dest: /root/kubernetes-dashboard.yaml
+        force: yes
+
+    - name: Setting up dashboard public IP
+      lineinfile:
+        path: /root/kubernetes-dashboard.yaml
+        line: "  externalIPs:\n    - {{ hostvars['master']['ansible_default_ipv4']['address'] }}"
+
+    - name: Install Kubernetes dashboard
+      shell: "kubectl apply -f /root/kubernetes-dashboard.yaml"
+
+    - name: Create a ServiceAccount
+      shell: kubectl create serviceaccount cluster-admin-dashboard-sa
+      args:
+        chdir: $HOME/.kube/
+        creates: admin_token
+
+    - name: Create admin role
+      shell: kubectl create clusterrolebinding cluster-admin-dashboard-sa --clusterrole=cluster-admin   --serviceaccount=default:cluster-admin-dashboard-sa 
+      args:
+        chdir: $HOME/.kube/
+        creates: admin_token
+
+    - name: Log admin token
+      shell: "kubectl describe secret $( kubectl get secrets | grep cluster-admin-dashboard-sa | awk '{print $1}' ) &>> $HOME/.kube/admin_token"
+      args:
+        chdir: $HOME/.kube/
+        creates: admin_token
+

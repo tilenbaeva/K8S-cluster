@@ -1,0 +1,128 @@
+- hosts: all
+  gather_facts: False
+  tasks:
+  - name: install python 2
+    raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+
+- hosts: all
+  become: yes
+  tasks:
+  - name: Check OS version
+    fail:
+      msg: "Playbook works on Ubuntu only!!!"
+    when: ansible_os_family == "Ubuntu"
+
+# Disable firewall
+  - name: Disable UFW
+    ufw:
+      state: disabled
+    ignore_errors: true
+
+# Disable swap
+  - name: Disable swap
+    command: "{{item}}"
+    with_items:
+     - cp /etc/fstab /root/fstab
+     - sed -i /"swap"/d /etc/fstab
+     - swapoff -a
+    ignore_errors: true
+
+# Upgrade Ubuntu
+  - name: Update Kernel
+    apt:
+      name: "linux-generic"
+      state: latest
+      update_cache: yes
+    register: dist
+
+  - name: Rebooting ...
+    shell: "sleep 3 && reboot"
+    async: 1
+    poll: 0
+    register: rebooting
+    ignore_errors: true
+    when: dist.changed
+
+  - name: Wait for rebooted servers to come back
+    local_action: wait_for host={{ ansible_ssh_host | default(inventory_hostname) }} state=started port=22 delay=30 timeout=300 connect_timeout=15
+    when: rebooting.changed
+
+# Install Docker
+  - name: Update apt
+    apt:
+      name: "{{ packages }}"
+      state: latest
+      update_cache: yes
+    vars:
+       packages:
+       - apt-transport-https
+       - ca-certificates
+       - curl
+       - software-properties-common
+
+  - name: Install Docker repo key
+    shell: "curl -s https://download.docker.com/linux/ubuntu/gpg | apt-key add -"
+
+  - name: Install Docker repo
+    shell: "echo \"deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list"
+
+  - name: Uninstall old versions of Docker
+    apt:
+      name: "{{ packages }}"
+      state: absent
+    vars:
+       packages:
+       - docker
+       - docker-engine
+       - docker.io
+
+  - name: Install Docker-CE
+    apt:
+      name: "docker-ce=18.06.0~ce~3-0~ubuntu"
+      state: present
+      force_apt_get: yes
+      update_cache: yes
+
+# Install Kubernetes
+  - name: Install Kubernetes repo key
+    shell: "curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -"
+
+  - name: Install Kubernetes repo
+    shell: "echo \"deb https://apt.kubernetes.io/ kubernetes-xenial main\" > /etc/apt/sources.list.d/kubernetes.list"
+
+  - name: Install Kubernetes
+    apt:
+      name: "{{ packages }}"
+      state: latest
+      update_cache: yes
+    vars:
+      packages:
+      - kubelet
+      - kubeadm
+      - kubectl
+
+# Start Services
+  - name: Start and enable docker.
+    service:
+      name: docker
+      state: started
+      enabled: True
+
+  - name: Start and enable kubelet.
+    service:
+      name: kubelet
+      state: started
+      enabled: True
+
+  - name: sysctl update-1
+    sysctl:
+     name: net.bridge.bridge-nf-call-iptables
+     value: 1
+     state: present
+
+  - name: sysctl update-2
+    sysctl:
+     name: net.bridge.bridge-nf-call-ip6tables
+     value: 1
+     state: present
+

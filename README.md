@@ -1,2 +1,3 @@
-# Kubernetes
-K8 cert prep
+# kubernetes-ansible2
+
+Installs Kubernetes cluster on Ubuntu
